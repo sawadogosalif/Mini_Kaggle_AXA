@@ -1,0 +1,1024 @@
+---
+title: "Tests  Data-Scientist – Multi-classification"
+output:
+  html_notebook:
+    toc: yes
+---
+
+<br/>
+
+
+
+# **Preambule**
+
+Dans ce travail de modélisation prédictive, j' essayerai de tester plusieurs modèles  
+predictifs afin de trouver le meilleur modèle. Il s'agit d'un problème d'apprentissage supervisé.
+
+Successivement, j'évaluerai les performances des modèles suivants :
+
+**modèles linéaires** seront appliqués (Logistique et LDA ), 
+
+**modèles non linéaireS** (Essentiellement les arbres),
+
+**modèles d'ensemble** (Bagging ou Random Forest),
+
+
+
+
+# Bibliothèques
+```{r}
+#Manipulation des données
+library(data.table) 
+library(tidyverse)
+# graphiques
+library(ggplot2)
+library(scales)
+library(ggpubr)
+#Machine learning et Modélation statistque
+library(C50)  
+library(caret)
+library(rpart) # (Reursive PARTitioning) 
+library(rpart.plot)
+library(MASS) 
+library(adabag)  # modèle d'ensemble
+library(VGAM) #regression logiistique multinomiale
+
+```
+
+# **Analyse Exploratoire des données**
+
+##  Lecture de données
+
+```{r}
+path="C:/Users/u32118508/Downloads/train.csv"
+train.sample<-fread(path,sep=",",encoding="UTF-8", na.strings=c("NULL",""))
+head(train.sample)
+```
+
+
+Les variables comme id, id_group1, id_group2, id_group2, id_group3 et id_group4 ne sont pas importantes à expliquer  la variable target.
+La colonne AP n'est pas à retenir car elle est constante sur toutes les lignes.
+
+gc_id et gc_label contiennent la meme information (l'une id et l'autre le label). Nous ne retiendrons que la variable gc_label.
+Il est en de même pour le couple de variable fruit_situation_id et fruit_situation_label. Fruit_situation_label sera retenu pour la suite.
+
+
+##  Doublons et valeurs uniques
+
+```{r}
+dim(train.sample)[1] - dim(unique(train.sample))[1]
+```
+Il n'existe pas de doublon parfait dans le dataset,
+
+
+```{r}
+dim(distinct(train.sample, id))
+```
+La colonne id est celle qui définie chaque ligne de données car elle est unqiue pour chaque ligne.
+
+```{r}
+dim(distinct(train.sample, id_group))[1]
+```
+```{r}
+dim(distinct(train.sample, id_group_2))[1]
+```
+Les colones id_group 1, 2, 3 et 4 ne sont pas uniques.
+
+
+##  Valeurs manquantes
+
+```{r}
+train.sample  %>%
+  summarise_all(list(~is.na(.)))%>%
+  pivot_longer(everything(),
+               names_to = "variables", values_to="missing") %>%
+  count(variables, missing) %>%
+  ggplot(aes(y=variables,x=n,fill=missing))+
+  geom_col()
+```
+
+Des variables comme fruits_or_vegetables ou ctc possèdent beaucoup de variables manquantes, Fruit_label_situation également avec rélativement peu de valeurs manquantes.
+
+Les variables villes et vegetables types sont manquantes dans la plupart des cas.
+
+
+
+**Que faire ?**
+
+Une solution ici serait de traiter les valeurs manquantes avant toute modélisation des scores. 
+
+En effet, la taille des valeurs manquantes est tellement importante que nous ne pouvons pas pas supprimer les lignes concernés ni faire une imputation simple par moyenne ou mediane.
+Nous proposons alors de chercher des liens existents entres les variables .
+
+
+```{r}
+temp=train.sample  %>%
+  filter(ville!='NA') %>%
+  dplyr::select(c('ville','location')) %>%
+  unique()
+
+temp=temp[order(ville)]
+
+head(temp,30)
+
+```
+
+Des villes comme Angoulême ,Angers  Aix-en-Provence possèdent plusieurs "locations" (j'ai fais l'hypothèse que ce sont location = departements   et cela a été infirmées après verification). Dans la locaton n 'est pas unique pour une ville données, donc je ne peux faire jointure adéquate afin d'imputer les valeurs manquantes de villes. 
+Pas de stratégie d'imputation de la variables ville.
+
+
+
+##  Analyse univariée de la variable d'interêt
+
+
+``` {r}
+ggplot(data = train.sample, aes(x = target ,y = (..count..)/sum(..count..)*100)) +
+    geom_bar()+
+    labs(y = 'pourcentage', title="Repartition de la variable d'interêt ")
+```
+Les classes sont très déséquiibrées.Ce graphique met en evidence la raison de l'indicateur "weighted loss" afin de donner plus d'importance à la prediction des modalités peu fréquentes.
+  
+<br/>
+ 
+  En réalité les variables number_of_fruits, situation, target,  doivent etre déclarées catégorielles.
+  
+```{r}
+train.sample$target=as.factor(train.sample$target)
+train.sample$number_of_fruit=as.factor(train.sample$number_of_fruit)
+train.sample$situation=as.factor(train.sample$situation)
+train.sample$green_vegetables =as.factor(train.sample$green_vegetables)
+train.sample$fruits_or_vegetables =as.factor(train.sample$fruits_or_vegetables)
+train.sample$ctc  =as.factor(train.sample$ctc)
+train.sample$hobby  =as.factor(train.sample$hobby)
+train.sample$gc_label  =as.factor(train.sample$gc_label)
+train.sample$ville  =as.factor(train.sample$ville)
+train.sample$favorite_fruit  =as.factor(train.sample$favorite_fruit)
+train.sample$fruit_situation_label  =as.factor(train.sample$fruit_situation_label)
+train.sample$vegetable_type  =as.factor(train.sample$vegetable_type)
+
+```  
+  
+<br/>
+
+##  Analyse bivariée
+
+``` {r}
+p1<-ggplot(data = train.sample, aes(x = factor(number_of_fruit) ,y = (..count..)/sum(..count..)*100)) +
+    geom_bar()+
+    labs(y = 'pourcentage', x= 'number_of_fruit', title="Number_of_fruit ")
+
+p2<-ggplot(data=train.sample, aes(x=target, fill=factor(number_of_fruit))) +
+  geom_bar(position="fill")+
+  labs(fill='number_of_fruit',y = 'pourcentage', title="number_of_fruit VS target ")
+
+p3<-ggplot(data = train.sample, aes(x = situation ,y = (..count..)/sum(..count..)*100)) +
+    geom_bar()+
+    labs(y = 'pourcentage', x= 'sitation', title="Situation ")
+
+p4<-ggplot(data=train.sample, aes(x=target, fill=situation)) +
+  geom_bar(position="fill")+
+  labs(fill='situation',y = 'pourcentage', title="situation VS target ")
+
+
+
+ggarrange(p1,p2, p3,p4,  ncol = 2, nrow = 2)
+
+```
+
+Les modalités nombre de fruits 1, 2 ,3 , 4 et 5 sont très peu representées (rares). 
+
+Néanmoins, il est ressort du graphique de droite que  les modalités  2 et  1 fruits semblent  caractériser le mieux le target 3 suivi du target 2.
+
+La variable situation est également une variable explicative potentielle au régard de la liaison que l'on peut apercevoir sur le graphique.
+<br/>
+
+  
+``` {r}
+p1<-ggplot(data = train.sample, aes(x = green_vegetables ,y = (..count..)/sum(..count..)*100)) +
+    geom_bar()+
+    labs(y = 'pourcentage', x= 'Type of green_vegetables', title="green_vegetables ")
+
+p2<-ggplot(data=train.sample, aes(x=target, fill=green_vegetables)) +
+  geom_bar(position="fill")+
+  labs(fill='green_vegetables',y = 'pourcentage', title="green_vegetables VS target ")
+
+p3<-ggplot(data = train.sample, aes(x = hobby,y = (..count..)/sum(..count..)*100)) +
+    geom_bar()+
+    labs(y = 'pourcentage', x= 'Type of hobby', title="hobby ")
+
+p4<-ggplot(data=train.sample, aes(x=target, fill=hobby)) +
+  geom_bar(position="fill")+
+  labs(fill='hobby',y = 'pourcentage', title="hobby VS target ")
+
+
+ggarrange(p1,p2,p3,p4 , ncol = 2, nrow = 2)
+
+```
+
+Ce graphique nous permet de voir que le hobby volleyball et noball ne sont pas present dans le target 3. Cependant, la presence du type de green_vegetables "t" est associée à une intensité croissante selon le numero du target.
+
+
+```{r}
+p5<-ggplot(data = train.sample, aes(x = favorite_fruit ,y = (..count..)/sum(..count..)*100)) +
+    geom_bar()+
+    labs(y = 'pourcentage', x= 'Type  of favorite_fruit', title="favorite_fruit")
+
+p6<-ggplot(data=train.sample, aes(x=target, fill=favorite_fruit)) +
+  geom_bar(position="fill")+
+  labs(fill='favorite_fruit',y = 'pourcentage', title="favorite VS target ")
+
+ggarrange(p5, p6 , ncol = 2, nrow = 1)
+
+```
+ La variable favorite_fruit est visiblement liée au niveau de target. Je retiendrai  alors la variable pour la construction des scores.
+ 
+<br/>
+
+
+
+
+
+
+##  Mécanisme des  valeurs manquantes
+
+
+Vu le nombre importants des valeurs manquantes, il devient plus que nécessaire d'étudier leur mécanismes 
+On considère en général trois types de mécanismes de réponse :
+
+
+1 **uniforme (Missing Completely at Random - MCAR)** : La supposition de ce mécanisme   revient à ne rien
+faire pour traiter les non-réponses et utiliser les formes habituelles d’estimateurs en les restreignant aux seuls
+répondants et en ignorant les valeurs manquantes
+
+
+2 **ignorable (Missing at Random - MAR)** : Un mécanisme de réponse est MAR  si, après avoir
+conditionné sur les variables auxiliaires, la probabilité réponse ne dépend pas de la variable d’intérêt.
+Dans ce cas, il est possible de réaliser des impuatations 
+
+3 **non-ignorable (Not Missing at Random - NMAR)** : un mecanisme non MCAR ni MAR : Travaux de recherches en cours
+
+Pour savoir dans quel type nous sommes, des analyses graphiques et modélisations explicatives sont nécessaires
+
+
+###  Graphiques
+
+ 
+```{r}
+miss<-c('target','ville',  'ctc', 'fruits_or_vegetables', 'fruit_situation_label', 'vegetable_type')
+KS=train.sample %>%
+  mutate(ville_m = case_when(is.na(ville)   ~ 1, TRUE ~ 0),
+          ctc_m = case_when(is.na(ctc)   ~ 1, TRUE ~ 0),
+          fruits_or_vegetables_m= case_when(is.na(fruits_or_vegetables)   ~ 1, TRUE ~ 0),
+          fruit_situation_label_m= case_when(is.na(fruit_situation_label)   ~ 1, TRUE ~ 0),
+          vegetable_type_m= case_when(is.na(vegetable_type)   ~ 1, TRUE ~ 0))
+
+
+ggplot(data=KS, aes(x=target, fill=factor(ctc_m))) +
+  geom_bar(position="fill") +
+  labs(fill='ctm', y='pourcentage')  +
+  scale_fill_discrete(    labels = c("No missing ", "Missing"))
+
+
+
+ggplot(data=KS, aes(x=target, fill=factor(ville_m))) +
+  geom_bar(position="fill") +
+  labs(fill='ctm', y='pourcentage')  +
+  scale_fill_discrete(    labels = c("No missing ", "Missing"))
+
+
+
+ggplot(data=KS, aes(x=target, fill=factor(fruit_situation_label_m))) +
+  geom_bar(position="fill")+
+  labs(fill='ctm', y='pourcentage')  +
+  scale_fill_discrete(    labels = c("No missing ", "Missing"))
+
+
+ggplot(data=KS, aes(x=target, fill=factor(fruits_or_vegetables_m))) +
+  geom_bar(position="fill")+
+  labs(fill='ctm', y='pourcentage')  +
+  scale_fill_discrete(    labels = c("No missing ", "Missing"))
+
+
+ggplot(data=KS, aes(x=target, fill=factor(vegetable_type_m))) +
+  geom_bar(position="fill")+
+  labs(fill='ctm', y='pourcentage')  +
+  scale_fill_discrete(    labels = c("No missing ", "Missing"))
+```
+Il semble que nous sommes dans un cas de mécanisme   ignorable pour l'ensembble des variables selectionnées.
+
+Lorsque nous modélisons  la presence de valeurs manquantes en fonction des variables explicatives du dataset, nous trouvons des liaisons significatives. 
+
+Deux choix s'offre à nous : 
+
+-imputer les valeurs manquanter avant d'exécuter le modèle
+
+
+-Trouver un algorithme robuste aux valeurs aberrantes.
+
+###  Modélisation explicative
+
+Notre but ici n'est pas de trouver le meilleur modèle qui prédit la présence ou non de valeurs manquantes. Nous cherchons le modèle explicatif afin de trouver les estimateurs sans biais des effets de chaque variable. Ainsi, nous ne donnerons pas d'importance aux critères comme l'accuracy, le F1, or la précision. 
+
+Une significativité d'au moins une variable nous assurera que nous sommes dans un mécanisme ignorable. Les autres variables peuvent alors servir à mettre en place des modèles robustes.
+
+```{r}
+modele1<-ville_m ~ situation+number_of_fruit+ hobby+ green_vegetables + favorite_fruit
+model1.logit = glm(modele1, data=KS,family=binomial(link="logit"))
+summary(model1.logit)
+```
+
+```{r}
+modele2<-ctc_m ~ situation +number_of_fruit+ hobby+ green_vegetables + favorite_fruit
+model2.logit = glm(modele2, data=KS,family=binomial(link="logit"))
+summary(model2.logit)
+```
+Les deux modèles montrent clairement la presence des variables pertinentes pour expliquer la presence / abscence de valeurs manquantes. Bonne nouvelle!!!!!!!!!
+
+
+
+  
+# **Features Engineering**
+
+Parmi les colonnes du dataset, malgré l'abscence d'un dictionnaire des données, je soupçonne un lien entre les colonnes de format date. 
+Dans cette étape de l'analyse, je compte créer une variable durée qui mesura le temps ecoulé entre les deux dates.   Egalement, dans cette partie, des variables mois et jours seront extraitées. 
+Une analyse graphique  permettra alors de savoir si les nouvelles variables créées sont pertinentes pour prédire target.
+
+```{r}
+unique(year(train.sample$creation_date_answer))
+# creations de deux  nouvelles variables (mois et jours) à partir de creation_date_gloable
+train.sample$creation_month_answer=factor(month(train.sample$creation_date_answer))
+train.sample$creation_day_answer=factor(mday(train.sample$creation_date_answer))
+
+# creations de trois nouvelles variables (jours,mois, année) à partir de creation_date_gloable
+train.sample$creation_year_global=factor(year(train.sample$creation_date_global))
+
+train.sample$creation_month_global=factor(month(train.sample$creation_date_global))
+train.sample$creation_day_global=factor(mday(train.sample$creation_date_global))    
+
+# creation d'une variable duree entre les deux dates
+train.sample$duree<-as.integer(round(difftime(train.sample$creation_date_answer, train.sample$creation_date_global, units = "weeks")))
+```
+  
+Les données de creation_date_answer concernent l'année 2019.
+
+```{r}
+p1<-ggplot(data = train.sample, aes(x = creation_month_answer
+,y = (..count..)/sum(..count..)*100)) +
+    geom_bar() +
+    labs(y = 'pourcentage',x="mois", title="creation_date_answer:en mois")
+
+p2<-ggplot(data=train.sample, aes(x=target, fill=creation_month_answer ))+
+  geom_bar(position="fill")+
+  labs(fill='creation_month_answer',y = 'pourcentage', title="Month answer VS target")
+p3<-ggplot(data = train.sample, aes(x = creation_day_answer
+ ,y = (..count..)/sum(..count..)*100)) +
+    geom_bar()+
+    labs(y = 'pourcentage',x="jours", title="creation_date_answer regroupée en mois")
+p4<-ggplot(data=train.sample, aes(x=creation_day_answer, fill=target ))+
+  geom_bar(position="fill")+
+  labs(fill='creation_day_answer',y = 'pourcentage', title="create_date_answer VS target ")
+
+
+ggarrange(p1, p2 ,p3, p4 , ncol = 2, nrow = 2)
+
+```
+Trois mois sont concernés.
+
+Les mois sont sensiblement équilibrés. Avoir les jours et mois comme nouvelles variables serait alors interessant dans la modélisation.
+
+
+
+```{r}
+p1<-ggplot(data = train.sample, aes(x = creation_year_global
+,y = (..count..)/sum(..count..)*100)) +
+    geom_bar() +
+    labs(y = 'pourcentage',x="year", title="creation_date_global :en année")
+
+p2<-ggplot(data = train.sample, aes(x = creation_month_global
+,y = (..count..)/sum(..count..)*100)) +
+    geom_bar() +
+    labs(y = 'pourcentage',x="month", title="creation_date_global :en mois")
+
+ggarrange(p1, p2 , ncol = 2, nrow = 1)
+```
+
+```{r}
+p3<-ggplot(data=train.sample, aes(x=target, fill=creation_year_global))+
+  geom_bar(position="fill")+
+  labs(fill='creation_year_global',y = 'pourcentage')
+
+
+p4<-ggplot(data=train.sample, aes(x=target, fill=creation_month_global))+
+  geom_bar(position="fill")+
+  labs(fill='creation_month_global',y = 'pourcentage')
+
+
+ggarrange(p3,p4, ncol = 2, nrow = 1)
+```
+
+Les trois années les plus représentées sont 2017 , 2018 et 2019. La plupart des date_creation_gloabl se concentre  en début au prémier trimestre de l'année et au dernier trimestre de l'année.
+Les années et les mois s'associent clairement aux targets. Ces nouvelles variables seront à garder !!!!
+
+
+
+
+```{r}
+
+ggplot(data=train.sample[duree<250], aes(x=duree, fill=target ))+
+  geom_bar(position="fill")+
+   labs(fill='target',y = 'pourcentage', title="duree")
+# filtrer la variable durée
+```
+Comme prévu, il existe une rélation entre la variable durée et les niveaux de target.
+
+Liberons l'espace de travail
+```{r}
+rm( list=setdiff( ls(), c("train.sample") ) )
+```
+
+# **Modélisation prédictive**
+
+Pour la réproductivité des resultats: 
+
+```{r}
+set.seed(3456)
+```
+## Partitionnement des données
+
+En modélisation prédictive, le principe de gnéralisation des resultats nécessite une partition aléatoire des données à des fins d'entrainement , de  validations et de test. J'ai décidé alors pour cette étape de diviser les données en deux parties.
+
+-Entrainement (80%)  :
+
+-Test (20%) :
+
+Les métriques étant calculées sur les données de test afin d'infirmer ou confirmer un phénomène de surapprentissage ou de sousapprentissage
+
+ Afin d'avoir une bonne répresentation de la population totale, les echantillons d'entrainement et de test seronts stratifiés par "target"
+
+``` {r} 
+# colonnes contenant les variables avec missing values 
+levels(train.sample$ville)=iconv(levels(train.sample$ville), from = 'UTF-8', to = 'ASCII//TRANSLIT')
+
+col_miss<-c('ville',  'ctc', 'fruits_or_vegetables', 'fruit_situation_label', 'vegetable_type')
+
+# colonnes sans missing values
+
+ col_no_miss<-c('target' ,'situation','location','gc_label',  'favorite_fruit','number_of_fruit','hobby' , 'green_vegetables',   
+'creation_month_answer' ,'creation_day_answer'  , 'duree',  'creation_year_global' , 'creation_month_global', 'creation_day_global')
+ 
+ colonnes<-c(col_miss,col_no_miss)
+ 
+
+
+train.sample$creation_month_global =as.integer(train.sample$creation_month_global)
+train.sample$creation_month_answer  =as.integer(train.sample$creation_month_answer  )
+
+train.sample$creation_day_global =as.integer(train.sample$creation_day_global )
+train.sample$creation_day_answer  =as.integer(train.sample$creation_day_answer  )
+
+train_index <- createDataPartition(train.sample$target, p = 0.8,  list = FALSE,  times = 1                                   )
+train.sample<-data.frame(train.sample)
+
+train.set<-dplyr::select(train.sample, colonnes)[train_index , ]
+test.set <-dplyr::select(train.sample, colonnes)[-train_index , ]
+```
+
+
+
+
+## Récherche du meilleur modèle
+
+### Les modèles d'arbres : robustes aux valeurs manquantes
+
+Nous testerons l'algorithme CART , Condition inference (C50) et CTREE
+Les randoms forest étant basées sur des cart non élaguées sont très sensibles aux valeurs maquantes.
+
+Une autre force des arbres de décision est la capacité de prendre en compte la matrice de coût lors de l'apprentissage.
+
+La matrice de coût s'ecrit comme suit : 
+
+$$\begin{pmatrix} 0 & 10 & 100 &1000 \\ 1 & 0  & 100 & 1000 \\ 1 & 10 & 0 & 1000 \\ 1 & 10  & 100 & 0\end{pmatrix}$$
+
+CART, CTRRE et C50 sont connus pour être très performants et très élégants sur la modélisation avec des valeurs manquante. En effet l'algorithme de traitement des valeurs manquantes s'explique en trois points :
+
+Prémièrement,  Quand  des variables sont manquantes pour un x donnée  , cela ne pose un problème que si l’on passe par un nœud dont la coupure est basée sur l’une de ces variables. 
+
+Deuxièment,en un nœud où la variable sur laquelle porte le split est manquante, on
+peut penser utiliser l’une des autres variables, par exemple la seconde découpe compétitive.on parle de surrogate split.
+ Mais cette idée n’est pas optimale, puisque la règle d’acheminement dans les fils droit et gauche respectivement peut être très éloignée de la règle d’acheminement induite par la découpe optimale .
+ 
+Troisièment, la solution révient alors à  calculer en chaque nœud la liste des découpes de substitution (surrogate splits) définies par la découpe minimisant le nombre de désaccords avec la règle d’acheminement induite par la coupure optimale. On dispose ainsi d’une méthode
+de traitement des valeurs manquantes en prédiction locale et performante, qui ne passe pas par des méthodes d’imputation globales et souvent trop grossières.
+
+
+CART :principes
+
+1. construire un arbre maximal (selection des variables avec GINI ou l'entropie)
+2. élaguer en étudiant le cout complexité
+3. définir l'arbre (optimal) fiable 
+
+
+
+ C50 :principes
+
+1.Elagage :a l'effectif du noeud
+2. C5.0 cherche `a minimiser l'entropie dans les noeuds-fils
+3. C5.0 n'est pas binaire. ´
+
+
+Ctree
+La selection des variables et les points de divisions se fait en deux étapes . Traduire toutes les décisions en des test d'hypothèses . Ces tests sont faits à l'aides des tests de permutation
+
+
+
+Nous rétirons la variable ville car après plusieurs essais, nous avons compris qu'elle n'est pas très importante. D'ailleurs, elle déteriore profondement la performance du modèle. Pour une exécution complète, il faut au moins 2 h de compilations sans hyperparamètres.
+```{r }
+str(train.sample)
+```
+
+
+
+La matrice de coût
+
+```{r}
+mat<-c(0,1,1,1,    10,0,10,10,    100,100,0, 100,     1000,1000,1000,0)
+weight_loss<-matrix(mat,nrow=4)
+
+levels(train.set$ville)=iconv(levels(train.set$ville), from = 'UTF-8', to = 'ASCII//TRANSLIT')
+
+``` 
+
+#### CART
+
+
+
+
+
+
+
+
+ **Construction de l'arbre le plus profond**
+ 
+
+```{r}
+#######CART
+library(rpart) # (Reursive PARTitioning) 
+
+
+# construction de l'arbre le plus profond
+cart1 = rpart(target~ . ,
+              data = train.set[, -1],
+              method="class",
+              parms=list(split="gini"),
+              cp=0)    # minsplit = 20 par défaut-l'effectif min d'un noued pour être scindé
+
+```
+
+
+
+``` {r }
+#summary(cart1,digits=3)
+```
+
+
+
+```{r }
+#rpart.plot(cart1,type = 4) 
+```
+
+```{r }
+prp(cart1,type=2,extra=1,split.box.col="lightblue")
+```
+
+
+**Recherche d'un meilleur paramètre cout-complexité par validation croisée : 10 folds**
+
+```{r }
+mat<-c(0,1,1,1,    10,0,10,10,    100,100,0, 100,     1000,1000,1000,0)
+weight_loss<-matrix(mat,nrow=4)
+
+cv.cart <- train(target~.,data=train.set[,-1],
+                 method="rpart",
+                 metric="Accuracy",
+                na.action = na.pass,
+
+                 parms=list(split="information", loss=weight_loss),
+                 trControl=trainControl(method="cv",
+                                        number=10),
+                 tuneGrid=data.frame(cp=seq(0,0.1,length=50)))
+
+plot(cv.cart)
+```
+
+
+**Construction de l'arbre optimale**
+
+``` {r }
+model.cart <- prune(cart1,cp=as.numeric(cv.cart$best))
+rpart.plot(model.cart)
+```
+
+
+```{r} 
+prp(model.cart,type=2,extra=1,split.box.col="lightblue")
+```
+
+Evaluation du modèle : méthode classique
+```{r}
+## cart prediction
+pred.cart_train <- predict(model.cart,train.set,type="class")
+pred.cart_test  <- predict(model.cart,test.set,type="class")
+```
+
+
+
+Les métriques associées aux train test
+```{r}
+confusionMatrix(pred.cart_train, train.set$target)
+```
+Au régard des métriques obténues, nous remarquons que  les resulats sont très satisfaisant. d'ailleurs, les prédictions pour le target 3 sont assez très intéressantes. Cependant, attendons de voir les métriques sur le test set avant de se prononcer
+
+
+Les métriques associées aux  données de test
+```{r}
+confusionMatrix(pred.cart_test, test.set$target)
+```
+
+Les métriques chutent enormement dans le test set!!! ===>Overfitting
+
+
+
+
+#### C50
+
+
+ **Choix des Hyperparamètres**
+
+```{r }
+defaultW <- getOption("warn")
+options(warn = -1)
+set.seed(1)
+c50_grd<-expand.grid(  .winnow = c(TRUE, FALSE),  .trials=1:15,  .model="tree")
+
+c50_cv <- train(target ~ .,
+                data = train.set[,-1],
+                method = "C5.0",
+                na.action = na.pass,
+                trControl = trainControl(method = "cv", number = 10),
+                tuneGrid = c50_grd,
+                verbose=FALSE,
+                metric="Accuracy",
+                 parms=list( loss=weight_loss))
+
+plot(c50_cv)
+options(warn = defaultW) 
+
+```
+
+** Entrainement**
+```{r }
+modele.c50<- C5.0(target ~ .,  data = train.set[,-1], trials=1,  control= C5.0Control(winnow = TRUE, minCases = 15))
+```
+
+**Evaluation du modèle**
+``` {r }
+pred.c50_train <- predict(modele.c50,train.set)
+pred.c50_test  <- predict(modele.c50,test.set)
+```
+
+``` {r }
+confusionMatrix(pred.c50_train, train.set$target)
+```
+Lorsque l'on regarde les differentes métriques dans le train.set et le test.set , nous remarquons qu'il n  y a pas de gap important==>Pas d'overfitting.
+
+Néanmoins, il est également sûr que nous faisons mieux que l'aléatoire (d'apèrs le test de Kappa ).
+
+``` {r }
+confusionMatrix(pred.c50_test, test.set$target)
+```
+Comme le montre la structures des arbres les variables possedant des informations manquantes ne discriminent pas les individus très forttement.
+Nous allons alors passer à la deuxième approche : supprimer les colonnes avec les valeurs manquantes (justifiés par le resultats obténus)
+
+
+
+
+#### CTREE
+
+ Apprentissage
+```{r }
+library(partykit)
+model.ctree<- partykit::ctree(target ~., data = train.set[,-1], 
+                        control=ctree_control(mincriterion =0.95,
+                        minbucket=10,
+                        testtype = "Bonferroni"))
+
+```
+
+Prédiction pour l'évaluation
+```{r }
+pred.ctree_train <- predict(model.ctree,train.set)
+pred.ctree_test  <- predict(model.ctree,test.set)
+
+```
+ 
+ Métriques sur le test set
+``` {r }
+confusionMatrix(pred.ctree_test, test.set$target)
+```
+
+Métriques sur les données de test
+
+``` {r }
+confusionMatrix(pred.ctree_train, train.set$target)
+```
+Lorsqu'on compare les métriques dans les deux partitions, nous rémarquons qu'il n y a pas de surapprrentissage. 
+
+Néanmoins, le modèle ne fait pas mieux que C50.
+
+
+
+#### **Resumé**
+CART nous fait sortir un modèle avec de l'overfitting. 
+
+Parmis les algorithmes d'arbres, C50 est le meileurs.
+
+
+Par ailleurs, les valeurs manquantes ne discriminent pas les targets.
+
+Il serait alors  judicieux de laisser tomber les features avec les missings values et tester d'autre modèle. 
+
+Par suite, nous pouvons alors nous raméner à des modèles d'ensembles pour résoudre le problèmes d'overfitting et verifier si l'on aura une amélioration des métriques
+On a 
+
+### Bagging
+
+Entrée : B nombre de modèles, ALGO algorithme d’apprentissage, 
+$Ω $ un ensemble de données de taille n avec $y$ cible à $K$ modalités, $X$ avec $P$ prédicteurs.
+
+
+**Apprentissage**
+
+MODELES = {} 
+
+Pour $b$ = 1 à $B$ 
+
+  
+&ensp;Faire
+
+   &ensp; &ensp; Tirage avec remise d’un échantillon de taille n  --> $Ω_{b}$
+
+  &ensp; &ensp; Construire un modèle $M_{b}$ sur $Ω_{b}$ avec ALGO
+
+&ensp; Ajouter $M_{b}$ dans MODELES
+
+Fin Pour
+
+
+**Règle de décision**
+
+Pour un individu $i*$  à classer,
+Appliquer chaque modèle $M_{b}$  de MODELES et obténir le classement à chaque étape
+
+Une fois toute les classements obtenus, Vote à la majorité
+
+```{r}
+library(adabag)
+
+train.set2<-train.set[col_no_miss]
+test.set2<-test.set[col_no_miss]
+
+
+#bagging et nombre de réplications
+
+B <- c(1,100,200,500)
+#une session pour un nombre d'arbres égal à b
+
+une_session <- function(b){
+  model.bagging <- bagging(target ~ ., data = train.set2,
+                           mfinal=b,
+                           coob = TRUE,
+                           control=list(cp=0,minsplit=10,minbucket=6))
+  p.bagging <- predict(model.bagging,newdata=test.set2)
+  return(mean(test.set2$target!=p.bagging))
+}
+
+
+#mesurer l'erreur en répétant l'opération 20 fois
+errors <- replicate(10,sapply(B,une_session))
+m.errors <- apply(errors,1,mean)
+plot(B,m.errors,xlab="B",ylab="Taux d'erreur",type="b")
+
+```
+
+```{r}
+library(adabag)
+###### meilleur modèle AVEC PARAMETRES
+model.bagging <- bagging(target ~ ., data = train.set2,
+                         mfinal= 200,
+                         coob = TRUE,
+                         control=list(cp=0,minsplit=2,minbucket=1))
+
+```
+L'algorithme a  tourné pendant longtemps  pour la recherche d'hyperparamètre. Vu le temp énorme, J'ai du arréter l'exécution afin de pouvoir remettre le rendu. 
+
+
+**calculate variable importance**
+
+
+
+Soit  OOBk l'échantillon Out Of Bag associé au kème arbre de la forêt.
+On peut alors calculer l'erreur de prediction de l'arbre sur l'échantillon OOBk . 
+Notons cette erreur erreur_obbk
+.
+On désigne maintenant par OOBkj l'échantillon OOBk dans lequel on a perturbé aléatoirement
+les valeurs de la variable j (en general les valeurs sont permutées) .
+On calcule l'erreur de prediction sur OOBkj. Notons cette erreur erreur_obbkj
+
+Heuristiquement, si la variable j joue un rôle déterminant dans la construction de l'arbre,
+alors une permutation de ces valeursdégradera fortement l'erreur. 
+La différence d'erreur erreur_obbk et erreur_obbkj sera alors élevée.
+d'où on utilise l'indicateur features_importance en faisant  en faisant la 
+difference enttre  erreur_obbk et la moyenne  erreur_obbkj sur sur toutes les ares (k variant de 1, m)"
+
+
+
+
+
+
+```{r }
+VI <- data.frame(model.bagging$importance )
+VI[,'features']=rownames(VI)
+VI<-rename(VI,'importance'='model.bagging.importance')
+#sort variable importance descending
+
+VI<-VI %>% arrange(desc(importance))
+
+barplot(VI$importance,
+        names.arg=VI$features,
+        horiz=FALSE,
+        col='darkgreen',
+        las=2,
+        main ='Variable Importance')
+```
+```{r}
+pred.bagging_train= predict(model.bagging, newdata = train.set2[,-1],type="class")
+pred.bagging_test = predict(model.bagging, newdata = test.set2[,-1]   ,type="class")
+```
+
+Confusion matrix du train set
+```{r}
+confusionMatrix(factor(pred.bagging_train$class),factor(train.set2$target))
+```
+
+Confusion matrix du test set
+```{r}
+confusionMatrix(factor(pred.bagging_test$class),factor(test.set2$target))
+```
+
+Meme le bagging n'arrive pas à corriger le problème d'overfitting!!!!!
+
+
+### Modèle linéaire : Regression logistique
+
+Parfois les modèles linéaires produisent des resultats très interessants en terme de performances par rapport aux autres modèles.
+Egalement, l'interprétabilité de ces modèles les rendent très séduisants. Essayons alors d'évaluer la performance d'un modèle linéaire!!!!!!!
+
+Selon le célèbre livre Hastie, T. and Tibshirani, R. and Friedman, J. The Elements of Statistical Learning; Data mining,  il n y a pas de difference significative entre une regression logistique et une analyse linéaire discrimante(lda).
+
+Cependant, lda repose sur des hypothèses tres fortes( multinormalité et homoscédasticité) alors que la logistique est plus généralisation du lda mais avec moins de hypthèses.
+
+Vu les contraintes de temps, nous testerons au moins le modèle logistique.
+
+
+La variable à expliquer à 4 modalités L'on doit alors se poser la question si théoriquement parlant ces modalités sont ordonnées ou non avant de chosir le modèle adéquat.
+Je fais l'hypothèse qu'elle ne sont pas ordonnées car l'abscence de dictionnaire de donnée nous permet pas de bien situer le modèle pour le choix ente regression logistique (multiclassification) ordinale et multinomiale.
+
+
+
+```{r}
+train.set2<-train.set[col_no_miss]
+test.set2<-test.set[col_no_miss]
+
+model.logit <- vglm(target~., data = train.set2, family = multinomial())
+pred.logit_train=predictvglm(model.logit,newdata=train.set2,type="response")
+pred.logit_test=predictvglm(model.logit,newdata=test.set2,type="response")
+```
+
+
+
+Les classes sont prédictes sous formes de prédictions.
+
+```{r}
+head(pred.logit_train)
+```
+
+Création des varaibles classes prédictes en une colonnes. Les classes étant nommées par réference à 0, 1, 2, 3
+```{r}
+# Cette instruction nous permet de recuperer l'indice de la classe où la probabilité est maximale . !! A noter que les indices comment par 1 jusqu'à 4
+train.set$predicted <- apply(pred.logit_train, 1, which.max) 
+test.set$predicted <-   apply(pred.logit_test, 1, which.max) 
+```
+
+
+```{r}
+train.set$pred=train.set[,20]-1
+test.set$pred=test.set[,20]-1
+```
+
+Confusion matrix du train set
+```{r}
+confusionMatrix(factor(train.set$pred),train.set$target)
+```
+
+Confusion matrix du test set
+```{r}
+confusionMatrix(factor(test.set$pred),test.set$target)
+```
+
+Dans le cas, on remarque que le modèle n'est pas très performant!!!
+
+D'alleurs, les métriques  sont très basses par rapport à celle que nous avons trouvées. 
+
+D'ailleurs, les prédictions de la modalité rare (4) sont très mitigées. Le modèle n'arrive pas à la rétrouver.
+
+Si nous disposons beaucoup plus de temps, nous pourrions par exemple réequilibre l'échantillon  d'entrainement en de manière équitable. 
+
+En fonction du nombre de target=3, la taille des autre targets serait raméner à la meme taille . Cela nous ne garantit pas  une amélioration du modèle mais je pense qu'il y a possibilité d'améliorer la prediction des classes rares (Target =3) étant donné que son coût de perte est très elevés.
+
+
+
+
+# **Prédictions**
+
+Cette étape permet de fournier les prédictions démandées. 
+On rappelle que C50 est notre meilleur modèle. Bonnes accuracy pondéré et meilleur sur les autres métriques.
+Une solution plus adéquate POUR cette partie  serait d'utiliser un pipeline pour automatiser ce modèle prédictif si nous disposons d'assez de temps.
+Néanmoins notre modèle finale   les étapes suivantes :
+
+1. Définitions des types de données
+
+2. Features engineering
+
+3. Modèle C50
+
+4. predictions
+
+
+```{r}
+path="C:/Users/u32118508/Downloads/train.csv"
+
+test<-data.frame(fread(path,sep=",",encoding="UTF-8", na.strings=c("NULL","")))
+
+# data types
+test$target=as.factor(test$target)
+test$number_of_fruit=as.factor(test$number_of_fruit)
+test$situation=as.factor(test$situation)
+test$green_vegetables =as.factor(test$green_vegetables)
+test$fruits_or_vegetables =as.factor(test$fruits_or_vegetables)
+test$ctc  =as.factor(test$ctc)
+test$hobby  =as.factor(test$hobby)
+test$gc_label  =as.factor(test$gc_label)
+testgc_label  =as.factor(test$gc_label)
+test$ville  =as.factor(test$ville)
+test$favorite_fruit  =as.factor(test$favorite_fruit)
+test$fruit_situation_label  =as.factor(test$fruit_situation_label)
+test$vegetable_type  =as.factor(test$vegetable_type)
+
+
+
+# colonnes contenant les variables avec missing values 
+levels(train.sample$ville)=iconv(levels(train.sample$ville), from = 'UTF-8', to = 'ASCII//TRANSLIT')
+
+
+ 
+
+
+# features engineering
+
+# creations de deux  nouvelles variables (mois et jours) à partir de creation_date_gloable
+test$creation_month_answer=as.integer(month(test$creation_date_answer))
+test$creation_day_answer=as.integer(mday(test$creation_date_answer))
+
+# creations de trois nouvelles variables (jours,mois, année) à partir de creation_date_gloable
+test$creation_year_global=factor(year(test$creation_date_global))
+test$creation_month_global=as.integer(month(test$creation_date_global))
+test$creation_day_global=as.integer(mday(test$creation_date_global))    
+
+# creation d'une variable duree entre les deux dates
+test$duree<-as.integer(round(difftime(test$creation_date_answer, test$creation_date_global, units = "weeks")))
+```
+
+```{r}
+#predire les scores de probabilités au lieux de prédire les classes
+# Sachant la classe est là où la probabilité est maximale
+
+# Sachant que le meilleur modèle est C50
+
+predictions<-data.frame(predict(modele.c50, dplyr::select(test, colonnes),type = "prob"))
+predictions$id1<-1 :nrow(test)
+test$id1<-1 :nrow(test)
+output<-inner_join(dplyr ::select(test, 'id','id1'), predictions, by='id1') 
+output<-dplyr ::select(output,-'id')
+colnames(output)=c('id',"0","1","2","3")
+write_csv(output,"C:/Users/u32118508/OneDrive - UPEC/test_AXA_prediction.CSV")
+```
