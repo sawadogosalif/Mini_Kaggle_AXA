@@ -1,8 +1,10 @@
 ---
 title: "Tests  Data-Scientist – Multi-classification"
 output:
-  html_notebook:
+  rmarkdown::github_document:
     toc: yes
+ 
+
 ---
 
 <br/>
