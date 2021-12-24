@@ -14,7 +14,7 @@ output:
 # **Preambule**
 
 Dans ce travail de modélisation prédictive, j' essayerai de tester plusieurs modèles  
-predictifs afin de trouver le meilleur modèle. Il s'agit d'un problème d'apprentissage supervisé.
+predictifs afin de trouver le meilleur modèle. Il s'agit d'un problème d'apprentissage supervisé!
 
 Successivement, j'évaluerai les performances des modèles suivants :
 
@@ -932,10 +932,12 @@ Confusion matrix du train set
 confusionMatrix(factor(train.set$pred),train.set$target)
 ```
 
+
 Confusion matrix du test set
 ```{r}
 confusionMatrix(factor(test.set$pred),test.set$target)
 ```
+
 
 Dans le cas, on remarque que le modèle n'est pas très performant!!!
 
@@ -964,6 +966,7 @@ Néanmoins notre modèle finale   les étapes suivantes :
 3. Modèle C50
 
 4. predictions
+
 
 
 ```{r}
@@ -1009,6 +1012,8 @@ test$creation_day_global=as.integer(mday(test$creation_date_global))
 # creation d'une variable duree entre les deux dates
 test$duree<-as.integer(round(difftime(test$creation_date_answer, test$creation_date_global, units = "weeks")))
 ```
+
+
 
 ```{r}
 #predire les scores de probabilités au lieux de prédire les classes
