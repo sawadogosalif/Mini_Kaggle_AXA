@@ -48,107 +48,22 @@ Successivement, j’évaluerai les performances des modèles suivants :
 ``` r
 #Manipulation des données
 library(data.table) 
-library(tidyverse)
-```
-
-    ## -- Attaching packages --------------------------------------- tidyverse 1.3.1 --
-
-    ## v ggplot2 3.3.5     v purrr   0.3.4
-    ## v tibble  3.1.6     v dplyr   1.0.7
-    ## v tidyr   1.1.4     v stringr 1.4.0
-    ## v readr   2.1.0     v forcats 0.5.1
-
-    ## -- Conflicts ------------------------------------------ tidyverse_conflicts() --
-    ## x dplyr::between()   masks data.table::between()
-    ## x dplyr::filter()    masks stats::filter()
-    ## x dplyr::first()     masks data.table::first()
-    ## x dplyr::lag()       masks stats::lag()
-    ## x dplyr::last()      masks data.table::last()
-    ## x purrr::transpose() masks data.table::transpose()
-
-``` r
+library(tidyverse) 
 # graphiques
 library(ggplot2)
 library(scales)
-```
-
-    ## 
-    ## Attachement du package : 'scales'
-
-    ## L'objet suivant est masqué depuis 'package:purrr':
-    ## 
-    ##     discard
-
-    ## L'objet suivant est masqué depuis 'package:readr':
-    ## 
-    ##     col_factor
-
-``` r
 library(ggpubr)
 #Machine learning et Modélation statistque
 library(C50)  
 library(caret)
-```
-
-    ## Le chargement a nécessité le package : lattice
-
-    ## 
-    ## Attachement du package : 'caret'
-
-    ## L'objet suivant est masqué depuis 'package:purrr':
-    ## 
-    ##     lift
-
-``` r
 library(rpart) # (Reursive PARTitioning) 
 library(rpart.plot)
 library(MASS) 
-```
-
-    ## 
-    ## Attachement du package : 'MASS'
-
-    ## L'objet suivant est masqué depuis 'package:dplyr':
-    ## 
-    ##     select
-
-``` r
 library(adabag)  # modèle d'ensemble
-```
-
-    ## Le chargement a nécessité le package : foreach
-
-    ## 
-    ## Attachement du package : 'foreach'
-
-    ## Les objets suivants sont masqués depuis 'package:purrr':
-    ## 
-    ##     accumulate, when
-
-    ## Le chargement a nécessité le package : doParallel
-
-    ## Le chargement a nécessité le package : iterators
-
-    ## Le chargement a nécessité le package : parallel
-
-``` r
 library(VGAM) #regression logiistique multinomiale
 ```
 
-    ## Le chargement a nécessité le package : stats4
 
-    ## Le chargement a nécessité le package : splines
-
-    ## 
-    ## Attachement du package : 'VGAM'
-
-    ## L'objet suivant est masqué depuis 'package:caret':
-    ## 
-    ##     predictors
-
-    ## L'objet suivant est masqué depuis 'package:tidyr':
-    ## 
-    ##     fill
 
 # **Analyse Exploratoire des données**
 
