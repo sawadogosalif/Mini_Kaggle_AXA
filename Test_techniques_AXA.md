@@ -33,7 +33,7 @@ Tests Data-Scientist – Multi-classification
 Dans ce travail de modélisation prédictive, j’ essayerai de tester
 plusieurs modèles  
 predictifs afin de trouver le meilleur modèle. Il s’agit d’un problème
-d’apprentissage supervisé.
+d’apprentissage supervisé!
 
 Successivement, j’évaluerai les performances des modèles suivants :
 
