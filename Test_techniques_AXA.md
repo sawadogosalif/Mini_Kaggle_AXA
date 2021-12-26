@@ -746,7 +746,7 @@ compte la matrice de coût lors de l’apprentissage.
 La matrice de coût s’ecrit comme suit :
 
 $$\\begin{pmatrix} 0 & 10 & 100 &1000 \\\\ 1 & 0  & 100 & 1000 \\\\ 1 & 10 & 0 & 1000 \\\\ 1 & 10  & 100 & 0\\end{pmatrix}$$
-![\Large \\begin{pmatrix} 0 & 10 & 100 &1000 \\\\ 1 & 0  & 100 & 1000 \\\\ 1 & 10 & 0 & 1000 \\\\ 1 & 10  & 100 & 0\\end{pmatrix}](https://latex.codecogs.com/svg.latex?x%3D%5Cfrac%7B-b%5Cpm%5Csqrt%7Bb%5E2-4ac%7D%7D%7B2a%7D)
+<img src="https://latex.codecogs.com/svg.image?\begin{bmatrix}&space;0&space;&&space;10&space;&&space;100&space;&1000&space;&space;\\1&space;&&space;0&space;&space;&&space;100&space;&&space;1000&space;&space;\\1&space;&&space;10&space;&&space;0&space;&&space;1000&space;\\1&space;&&space;10&space;&space;&&space;100&space;&&space;0&space;&space;\\\end{bmatrix}" title="\begin{bmatrix} 0 & 10 & 100 &1000 \\1 & 0 & 100 & 1000 \\1 & 10 & 0 & 1000 \\1 & 10 & 100 & 0 \\\end{bmatrix}" />
 
 CART, CTRRE et C50 sont connus pour être très performants et très
 élégants sur la modélisation avec des valeurs manquante. En effet
